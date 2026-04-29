@@ -399,24 +399,34 @@
               <FilePath>..\GD32F450Z_BSP\src\i2c.c</FilePath>
             </File>
             <File>
-              <FileName>s3.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\GD32F450Z_BSP\src\s3.c</FilePath>
-            </File>
-            <File>
               <FileName>e1.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\GD32F450Z_BSP\src\e1.c</FilePath>
             </File>
             <File>
-              <FileName>s6.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\GD32F450Z_BSP\src\s6.c</FilePath>
-            </File>
-            <File>
               <FileName>s1.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\GD32F450Z_BSP\src\s1.c</FilePath>
+            </File>
+            <File>
+              <FileName>s2.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\GD32F450Z_BSP\src\s2.c</FilePath>
+            </File>
+            <File>
+              <FileName>s8.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\GD32F450Z_BSP\src\s8.c</FilePath>
+            </File>
+            <File>
+              <FileName>e2.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\GD32F450Z_BSP\src\e2.c</FilePath>
+            </File>
+            <File>
+              <FileName>c3_wifi.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\GD32F450Z_BSP\src\c3_wifi.c</FilePath>
             </File>
             <File>
               <FileName>flash.c</FileName>
