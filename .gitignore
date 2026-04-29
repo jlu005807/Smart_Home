@@ -1,0 +1,50 @@
+# Editor and IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+*~
+
+# EIDE
+.eide/
+.eide.usr.ctx.json
+.eide/log/
+*.ept
+*.eide-template
+
+# Build outputs (generic)
+build/
+bin/
+obj/
+out/
+**/build/
+**/bin/
+**/obj/
+**/out/
+
+# Keil uVision / ARMCC outputs
+**/Listings/
+**/Objects/
+*.uvguix
+*.uvguix.*
+*.uvoptx
+*.uvoptx.*
+*.uvtmp
+*.crf
+*.d
+*.dep
+*.map
+*.axf
+*.elf
+*.hex
+*.bin
+*.lst
+
+# J-Link logs
+JLinkLog.txt
+JLinkSettings.ini
+
+# OS files
+.DS_Store
+Thumbs.db
