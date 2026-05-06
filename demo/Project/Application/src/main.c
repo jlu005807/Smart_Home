@@ -178,7 +178,7 @@ int main(void)
     Wifi_Init();
 
     state.mode = MODE_AUTO;
-    state.temperature = 25.0f;
+    state.temperature = 10.0f;
     state.humidity = 50.0f;
     state.light = 0;
     smart_home_led_set(0);
