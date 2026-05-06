@@ -27,6 +27,7 @@ typedef struct {
     uint16_t light;
     uint8_t led_on;
     uint8_t fan_on;
+    uint8_t fan_duty;
     SystemMode mode;
 } SmartHomeState;
 
@@ -64,12 +65,29 @@ static void smart_home_led_set(uint8_t on)
 static void smart_home_fan_set(uint8_t on)
 {
     state.fan_on = on ? 1U : 0U;
+    state.fan_duty = state.fan_on ? FAN_ON_DUTY : 0U;
+    if (!e2_fan_addr.flag) {
+        return;
+    }
+
+    if (state.fan_on) {
+        e2_fan_on(e2_fan_addr.periph, e2_fan_addr.addr);
+    } else {
+        e2_fan_off(e2_fan_addr.periph, e2_fan_addr.addr);
+    }
+}
+
+static void smart_home_fan_set_duty(uint8_t duty)
+{
+    if (duty > 100U) {
+        duty = 100U;
+    }
+
+    state.fan_duty = duty;
+    state.fan_on = (duty > 0U) ? 1U : 0U;
+
     if (e2_fan_addr.flag) {
-        if (state.fan_on) {
-            e2_fan_on(e2_fan_addr.periph, e2_fan_addr.addr);
-        } else {
-            e2_fan_off(e2_fan_addr.periph, e2_fan_addr.addr);
-        }
+        e2_fan_set_duty(e2_fan_addr.periph, e2_fan_addr.addr, duty);
     }
 }
 
@@ -132,12 +150,25 @@ static void smart_home_handle_key(uint8_t key)
 
 static void smart_home_apply_auto_control(void)
 {
+    uint8_t duty = 0U;
+
     if (state.mode != MODE_AUTO) {
         return;
     }
 
     smart_home_led_set(state.light < LIGHT_THRESHOLD);
-    smart_home_fan_set(state.temperature >= TEMP_THRESHOLD);
+
+    if (state.temperature >= FAN_TEMP_LEVEL_4) {
+        duty = FAN_DUTY_LEVEL_4;
+    } else if (state.temperature >= FAN_TEMP_LEVEL_3) {
+        duty = FAN_DUTY_LEVEL_3;
+    } else if (state.temperature >= FAN_TEMP_LEVEL_2) {
+        duty = FAN_DUTY_LEVEL_2;
+    } else if (state.temperature >= FAN_TEMP_LEVEL_1) {
+        duty = FAN_DUTY_LEVEL_1;
+    }
+
+    smart_home_fan_set_duty(duty);
 }
 
 static void smart_home_debug_output(void)
@@ -145,13 +176,14 @@ static void smart_home_debug_output(void)
     char msg[128];
 
     sprintf(msg,
-            "mode=%s temp=%.2fC humi=%.2f%%RH light=%u led=%u fan=%u\r\n",
+            "mode=%s temp=%.2fC humi=%.2f%%RH light=%u led=%u fan=%u duty=%u%%\r\n",
             (state.mode == MODE_AUTO) ? "AUTO" : "MANUAL",
             state.temperature,
             state.humidity,
             state.light,
             state.led_on,
-            state.fan_on);
+            state.fan_on,
+            state.fan_duty);
     debug_printf(USART0, msg);
 }
 
