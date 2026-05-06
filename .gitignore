@@ -48,3 +48,8 @@ JLinkSettings.ini
 # OS files
 .DS_Store
 Thumbs.db
+
+
+docs/pdf
+docs/superpowers
+
