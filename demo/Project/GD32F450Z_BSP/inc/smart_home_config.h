@@ -13,6 +13,6 @@
 #define FAN_DUTY_LEVEL_3     70U
 #define FAN_DUTY_LEVEL_4     90U
 #define LED_ON_DUTY          100U
-#define SENSOR_UPDATE_MS     500U
+#define SENSOR_UPDATE_MS     200U
 
 #endif

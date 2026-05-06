@@ -2,8 +2,8 @@
 #include "main.h"
 
 #define S8_RESET_DELAY_MS     200U
-#define S8_MEASURE_DELAY_MS   100U
-#define S8_READ_RETRY_COUNT   3U
+#define S8_MEASURE_DELAY_MS   20U
+#define S8_READ_RETRY_COUNT   2U
 
 static uint8_t s8_crc8(const uint8_t *data, uint8_t len)
 {
