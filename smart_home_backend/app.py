@@ -2,6 +2,7 @@ from collections import deque
 from copy import deepcopy
 from datetime import datetime
 from threading import Lock
+import socket
 
 from flask import Flask, jsonify, render_template_string, request
 
@@ -21,6 +22,11 @@ ALLOWED_COMMANDS = {
 _data_lock = Lock()
 _latest_status = {}
 _command_queue = deque()
+
+
+@app.before_request
+def log_all_requests():
+    print(f"[HTTP] from={request.remote_addr} {request.method} {request.path}")
 
 
 def _normalize_device_id(value):
@@ -60,6 +66,7 @@ def device_report():
 
     with _data_lock:
         _latest_status[device_id] = status
+    print(f"[DEVICE_REPORT] from={request.remote_addr} id={device_id} temp={status.get('temperature')} hum={status.get('humidity')} light={status.get('light')}")
 
     return jsonify({"ok": True, "device_id": device_id, "saved_at": status["updated_at"]})
 
@@ -76,6 +83,7 @@ def device_next_cmd():
                 next_command = item["cmd"]
                 del _command_queue[index]
                 break
+    print(f"[DEVICE_NEXT_CMD] from={request.remote_addr} id={device_id} cmd={next_command}")
 
     return jsonify({"cmd": next_command})
 
@@ -212,4 +220,18 @@ def index():
 
 
 if __name__ == "__main__":
+    try:
+        addrs = {info[4][0] for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)}
+    except Exception:
+        addrs = set()
+
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        probe.connect(("8.8.8.8", 80))
+        addrs.add(probe.getsockname()[0])
+        probe.close()
+    except Exception:
+        pass
+
+    print("[LOCAL_IPV4]", ", ".join(sorted(addrs)) if addrs else "N/A")
     app.run(host="0.0.0.0", port=5000, debug=False)

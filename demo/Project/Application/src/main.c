@@ -244,6 +244,8 @@ int main(void)
     s2_light_addr = s2_init(S2_LIGHT_ADDR);
     s8_temp_humi_addr = s8_init(S8_TEMP_HUMI_ADDR);
     e2_fan_addr = e2_init(E2_FAN_ADDR);
+    timer3_init();
+    uart_init(USART5);
     Wifi_Init();
 
     state.mode = MODE_AUTO;
@@ -252,8 +254,6 @@ int main(void)
     state.light = 0;
     smart_home_led_set(0);
     smart_home_fan_set(0);
-
-    timer3_init();
 
     while (1) {
         key_value = SWN;

@@ -3,6 +3,8 @@
 
 #include "gd32f4xx.h"
 
+#define WIFI_RX_BUFFER_SIZE   256U
+
 typedef enum {
     WIFI_CMD_NONE = 0,
     WIFI_CMD_LED_ON,
