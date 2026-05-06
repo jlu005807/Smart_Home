@@ -148,6 +148,42 @@ static void smart_home_handle_key(uint8_t key)
     }
 }
 
+static void smart_home_handle_wifi_command(wifi_cmd_t cmd)
+{
+    if (cmd == WIFI_CMD_NONE) {
+        return;
+    }
+
+    switch (cmd) {
+    case WIFI_CMD_LED_ON:
+        state.mode = MODE_MANUAL;
+        smart_home_led_set(1U);
+        break;
+    case WIFI_CMD_LED_OFF:
+        state.mode = MODE_MANUAL;
+        smart_home_led_set(0U);
+        break;
+    case WIFI_CMD_FAN_ON:
+        state.mode = MODE_MANUAL;
+        smart_home_fan_set_duty(FAN_ON_DUTY);
+        break;
+    case WIFI_CMD_FAN_OFF:
+        state.mode = MODE_MANUAL;
+        smart_home_fan_set_duty(0U);
+        break;
+    case WIFI_CMD_AUTO_MODE:
+        state.mode = MODE_AUTO;
+        break;
+    case WIFI_CMD_MANUAL_MODE:
+        state.mode = MODE_MANUAL;
+        break;
+    case WIFI_CMD_READ_STATUS:
+        break;
+    default:
+        break;
+    }
+}
+
 static void smart_home_apply_auto_control(void)
 {
     uint8_t duty = 0U;
@@ -190,6 +226,7 @@ static void smart_home_debug_output(void)
 int main(void)
 {
     uint8_t key_value;
+    wifi_cmd_t wifi_cmd;
 
     nvic_priority_group_set(NVIC_PRIGROUP_PRE4_SUB0);
     uart_init(USART0);
@@ -232,8 +269,15 @@ int main(void)
         smart_home_apply_auto_control();
         smart_home_display_update();
         smart_home_debug_output();
-        Wifi_SendSensorData(state.temperature, state.humidity, state.light);
+        Wifi_SendSensorData(state.temperature,
+                            state.humidity,
+                            state.light,
+                            state.fan_on,
+                            state.led_on,
+                            (uint8_t)state.mode);
         Wifi_ReceiveCommand();
+        wifi_cmd = Wifi_GetPendingCommand();
+        smart_home_handle_wifi_command(wifi_cmd);
 
         delay_ms(SENSOR_UPDATE_MS);
     }
@@ -291,7 +335,6 @@ void uart_init(uint32_t usart_periph)
         usart_receive_config(USART0, USART_RECEIVE_ENABLE);
         usart_transmit_config(USART0, USART_TRANSMIT_ENABLE);
         usart_enable(USART0);
-        usart_interrupt_enable(USART0, USART_INT_RBNE);
     } else if (usart_periph == USART2) {
         nvic_irq_enable(USART2_IRQn, 0, 0);
         rcu_periph_clock_enable(RCU_GPIOD);
@@ -307,7 +350,6 @@ void uart_init(uint32_t usart_periph)
         usart_receive_config(USART2, USART_RECEIVE_ENABLE);
         usart_transmit_config(USART2, USART_TRANSMIT_ENABLE);
         usart_enable(USART2);
-        usart_interrupt_enable(USART2, USART_INT_RBNE);
     } else if (usart_periph == USART5) {
         nvic_irq_enable(USART5_IRQn, 0, 0);
         rcu_periph_clock_enable(RCU_GPIOC);
@@ -323,7 +365,6 @@ void uart_init(uint32_t usart_periph)
         usart_receive_config(USART5, USART_RECEIVE_ENABLE);
         usart_transmit_config(USART5, USART_TRANSMIT_ENABLE);
         usart_enable(USART5);
-        usart_interrupt_enable(USART5, USART_INT_RBNE);
     }
 }
 
@@ -363,12 +404,17 @@ uint16_t uart_print16(uint32_t usart_periph, uint16_t *data, uint16_t len)
 
 void debug_printf(uint32_t usart_periph, char *string)
 {
-    uint8_t buffer[100];
     uint16_t len;
 
+    if (string == 0) {
+        return;
+    }
+
     len = (uint16_t)strlen(string);
-    strncpy((char *)buffer, string, len);
-    uart_print(usart_periph, buffer, len);
+    if (len == 0U) {
+        return;
+    }
+    uart_print(usart_periph, (uint8_t *)string, len);
 }
 
 void TIMER3_IRQHandler(void)

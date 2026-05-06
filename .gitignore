@@ -49,6 +49,25 @@ JLinkSettings.ini
 .DS_Store
 Thumbs.db
 
+# Python / Flask backend
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+env/
+.env
+.env.*
+smart_home_backend/.venv/
+smart_home_backend/__pycache__/
+smart_home_backend/*.log
+
 
 docs/pdf
 docs/superpowers
