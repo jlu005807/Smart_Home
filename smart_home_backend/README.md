@@ -1,8 +1,10 @@
-# Smart Home Backend (Flask)
+# Smart Home Backend
 
-用于 C3 Wi-Fi 子板（ESP32 AT 指令）接入的课程设计 Demo 后端。
+用于当前智能家居固件的 Flask 后端。
 
-## 1. 项目结构
+这个 README 只描述仓库里已经实现的后端接口，并同步当前 C3 固件默认配置。当前后端代码已完成，C3 实机联网仍在联调中。
+
+## 1. 目录结构
 
 ```text
 smart_home_backend/
@@ -11,34 +13,55 @@ smart_home_backend/
 └── README.md
 ```
 
-## 2. 安装依赖
+## 2. 安装与启动
 
-建议使用 Python 3.9+。
+建议使用 Python 3.9+：
 
 ```bash
 cd smart_home_backend
 python -m venv .venv
-.venv\\Scripts\\activate
+.venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-## 3. 启动后端
-
-```bash
 python app.py
 ```
 
-服务默认监听：
+启动后：
 
-- `0.0.0.0:5000`
-- 局域网内 C3 可通过 `http://<电脑IP>:5000` 访问
+- 服务监听 `0.0.0.0:5000`
+- 控制台会打印本机可用 IPv4，例如 `[LOCAL_IPV4] 192.168.137.1`
 
-## 4. 接口说明
+浏览器可直接打开：
 
-### 4.1 设备上报
+```text
+http://127.0.0.1:5000/
+```
 
-- `POST /api/device/report`
-- 示例 JSON：
+## 3. 当前固件默认对接参数
+
+当前固件默认值来自 [c3_wifi.c](/abs/path/d:/xiaomi/Smart_Home/demo/Project/GD32F450Z_BSP/src/c3_wifi.c)：
+
+```c
+#define C3_WIFI_SSID         "ozy"
+#define C3_WIFI_PASSWORD     "12345678"
+#define C3_SERVER_HOST       "192.168.137.1"
+#define C3_SERVER_PORT       5000U
+#define C3_DEVICE_ID         "smart-home-001"
+```
+
+这意味着：
+
+- 如果你按当前固件直接烧录，C3 会尝试连接热点 `ozy`
+- 它会把 `192.168.137.1:5000` 当作后端地址
+- 如果你的电脑热点 IP 不是 `192.168.137.1`，需要同步修改固件中的 `C3_SERVER_HOST`
+
+## 4. 后端接口
+
+### 4.1 设备状态上报
+
+- 方法：`POST`
+- 路径：`/api/device/report`
+
+示例请求：
 
 ```json
 {
@@ -52,31 +75,45 @@ python app.py
 }
 ```
 
+示例响应：
+
+```json
+{
+  "ok": true,
+  "device_id": "smart-home-001",
+  "saved_at": "2026-05-12 10:30:00"
+}
+```
+
 ### 4.2 设备轮询命令
 
-- `GET /api/device/next_cmd?device_id=smart-home-001`
-- 有命令返回：
+- 方法：`GET`
+- 路径：`/api/device/next_cmd?device_id=smart-home-001`
+
+有命令时返回：
 
 ```json
 {"cmd":"FAN_ON"}
 ```
 
-- 无命令返回：
+无命令时返回：
 
 ```json
 {"cmd":"NONE"}
 ```
 
-### 4.3 网页/调试工具下发命令
+### 4.3 网页或调试工具下发命令
 
-- `POST /api/web/command`
-- 示例 JSON：
+- 方法：`POST`
+- 路径：`/api/web/command`
+
+示例请求：
 
 ```json
-{"cmd":"FAN_ON"}
+{"cmd":"FAN_ON","device_id":"smart-home-001"}
 ```
 
-支持命令：
+当前支持的命令：
 
 - `LED_ON`
 - `LED_OFF`
@@ -86,96 +123,122 @@ python app.py
 - `MANUAL_MODE`
 - `READ_STATUS`
 
-### 4.4 查看状态
+### 4.4 查看当前状态
 
-- `GET /api/web/status`
-- 返回当前设备最新状态 + 待执行命令队列。
+- 方法：`GET`
+- 路径：`/api/web/status`
 
-## 5. Web 页面
-
-浏览器打开：
+推荐直接带设备号：
 
 ```text
-http://127.0.0.1:5000/
+/api/web/status?device_id=smart-home-001
 ```
 
-页面提供：
+返回内容包含：
 
-- 温度、湿度、光照、风扇、LED、模式显示
-- LED/风扇开关按钮
-- 自动/手动模式按钮
+- `current_status`
+- `all_devices`
+- `pending_commands`
 
-## 6. 查看电脑局域网 IP
+## 5. Web 控制页
 
-Windows（推荐）：
-
-```powershell
-ipconfig
-```
-
-找到当前网卡的 `IPv4 Address`，例如 `192.168.1.100`。
-
-## 7. C3 通过 AT 指令连接 Flask 测试
-
-下面示例基于 ESP32 AT 固件，串口波特率按你板子设置（常见 115200）。
-
-1) 连 Wi-Fi：
+访问：
 
 ```text
-AT
-AT+CWMODE=1
-AT+CWJAP="你的WiFi名","你的WiFi密码"
+http://127.0.0.1:5000/?device_id=smart-home-001
 ```
 
-2) 连 Flask 服务器（电脑 IP 假设 `192.168.1.100`）：
+页面当前能力：
+
+- 展示温度、湿度、光照、模式、风扇、LED
+- 下发 `LED_ON / LED_OFF`
+- 下发 `FAN_ON / FAN_OFF`
+- 下发 `AUTO_MODE / MANUAL_MODE`
+- 每 1.5 秒刷新一次状态
+
+## 6. 当前固件与后端交互方式
+
+当前固件不是长连接模式，而是“每次请求单独建连、发送、关闭”：
+
+1. `Wifi_Init()` 阶段先发一次 `GET /api/device/next_cmd` 探测后端。
+2. 运行中每约 1 秒发一次 `POST /api/device/report`。
+3. 运行中每约 1 秒发一次 `GET /api/device/next_cmd`。
+4. 若连续多次 TCP 建连失败，固件会把网络状态置为未就绪并进入重连流程。
+
+## 7. 联调建议
+
+### 7.1 电脑热点方案
+
+如果沿用当前固件默认值，建议：
+
+- 电脑开启热点，SSID 设为 `ozy`
+- 密码设为 `12345678`
+- 确认热点网卡 IPv4 是 `192.168.137.1`
+- 在电脑上启动 Flask 后端
+- 放行 Windows 防火墙的 `5000` 端口
+
+### 7.2 后端连通性自测
+
+先在电脑本机浏览器访问：
 
 ```text
-AT+CIPMUX=1
-AT+CIPSTART=0,"TCP","192.168.1.100",5000
+http://127.0.0.1:5000/api/web/status?device_id=smart-home-001
 ```
 
-3) 发送轮询命令 HTTP 请求（GET）：
+再在同一局域网的手机或另一台电脑访问：
 
 ```text
-AT+CIPSEND=0,89
-GET /api/device/next_cmd?device_id=smart-home-001 HTTP/1.1
-Host: 192.168.1.100:5000
-
+http://<电脑IP>:5000/api/web/status?device_id=smart-home-001
 ```
 
-说明：`CIPSEND` 的长度需要与你实际发送字节数一致，不一致会失败。
+如果这一步不通，问题不在 C3 固件，而在网络、热点或防火墙。
 
-4) 发送状态上报 HTTP 请求（POST）：
+## 8. 常见问题
 
-请求格式示意（长度请按实际内容计算）：
+### 8.1 浏览器能打开，C3 还是不通
 
-```text
-POST /api/device/report HTTP/1.1
-Host: 192.168.1.100:5000
-Content-Type: application/json
-Content-Length: <len>
+优先检查：
 
-{"device_id":"smart-home-001","temperature":28.5,"humidity":52.3,"light":360,"fan":"off","led":"on","mode":"auto"}
-```
+- C3 实际连上的是不是目标热点
+- `C3_SERVER_HOST` 是否与电脑热点网关一致
+- Windows 防火墙是否放行 5000 端口
+- 电脑是否同时连着手机热点，导致你误判了目标网络
 
-## 8. 常见问题排查
+### 8.2 C3 总是回连旧手机热点
 
-1. C3 连不上服务器  
-   - 确认电脑和 C3 在同一局域网  
-   - 确认 Flask 已启动并监听 `0.0.0.0:5000`
+当前固件已经加入以下清理动作：
 
-2. 浏览器能开，C3 不通  
-   - 检查 Windows 防火墙是否放行 5000 端口  
-   - 用手机或同网段电脑访问 `http://<电脑IP>:5000/api/web/status` 验证
+- `AT+RESTORE`
+- `AT+CWAUTOCONN=0`
+- `AT+CWRECONNCFG=0,0`
+- `AT+CWQAP`
+- `AT+SYSSTORE=0`
 
-3. `CIPSEND` 后无响应或报错  
-   - 检查发送长度是否正确  
-   - 检查 HTTP 报文是否包含空行分隔 Header 和 Body
+如果仍然回连旧热点，至少要同时满足：
 
-4. 设备一直收到 `NONE`  
-   - 先调用 `POST /api/web/command` 下发命令  
-   - 再让设备轮询 `GET /api/device/next_cmd`
+- 旧手机热点先关闭
+- 上电后查看串口日志里的 `C3 AP INFO:`
+- 确认 `AT+CWJAP?` 返回的 SSID 真的是 `ozy`
 
-5. 状态不更新  
-   - 检查 `POST /api/device/report` JSON 是否合法  
-   - 确认 `Content-Type: application/json`
+### 8.3 `CIPSEND` 手工调试失败
+
+手工 AT 调试时，`AT+CIPSEND=<len>` 的长度必须与后续 HTTP 报文的实际字节数完全一致。
+
+固件内部会自动计算长度；只有你手工在串口工具里发 AT 指令时，才需要自己算。
+
+### 8.4 后端状态一直是空
+
+说明后端没有收到 `POST /api/device/report`。优先看 Flask 控制台是否出现：
+
+- `[HTTP]`
+- `[DEVICE_REPORT]`
+- `[DEVICE_NEXT_CMD]`
+
+如果这三类日志都没有，问题还在 C3 到后端之间。
+
+## 9. 当前结论
+
+- 后端接口已完整可用。
+- 固件默认按 `ozy / 12345678 / 192.168.137.1:5000` 联调。
+- 文档现在与当前代码实现一致。
+- C3 实机联网问题仍待继续排查，不应把当前状态写成“已联通”。
