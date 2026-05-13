@@ -1,8 +1,11 @@
 from collections import deque
 from copy import deepcopy
 from datetime import datetime
-from threading import Lock
+from threading import Lock, Thread
+import json
+import os
 import socket
+import time
 
 from flask import Flask, jsonify, render_template_string, request
 
@@ -19,9 +22,188 @@ ALLOWED_COMMANDS = {
     "READ_STATUS",
 }
 
+DEVICE_TCP_HOST = os.getenv("C3_DEVICE_HOST", "192.168.103.45")
+DEVICE_TCP_PORT = int(os.getenv("C3_DEVICE_PORT", "5001"))
+DEVICE_POLL_INTERVAL = float(os.getenv("C3_POLL_INTERVAL", "1.0"))
+DEVICE_CONNECT_TIMEOUT = float(os.getenv("C3_CONNECT_TIMEOUT", "1.0"))
+DEVICE_SOCKET_TIMEOUT = float(os.getenv("C3_SOCKET_TIMEOUT", "1.0"))
+DEVICE_QUERY_ENABLED = os.getenv("C3_QUERY_ENABLED", "0") != "0"
+
+TCP_LISTEN_HOST = os.getenv("C3_TCP_LISTEN_HOST", "0.0.0.0")
+TCP_LISTEN_PORT = int(os.getenv("C3_TCP_LISTEN_PORT", "5001"))
+TCP_LISTEN_ENABLED = os.getenv("C3_TCP_LISTEN_ENABLED", "0") != "0"
+TCP_SOCKET_TIMEOUT = float(os.getenv("C3_TCP_SOCKET_TIMEOUT", "2.0"))
+TCP_MAX_PAYLOAD = int(os.getenv("C3_TCP_MAX_PAYLOAD", "1024"))
+
 _data_lock = Lock()
 _latest_status = {}
 _command_queue = deque()
+
+
+def _read_socket_text(sock, max_bytes=2048):
+    chunks = []
+    total = 0
+    while total < max_bytes:
+        try:
+            data = sock.recv(256)
+        except socket.timeout:
+            break
+        if not data:
+            break
+        chunks.append(data)
+        total += len(data)
+        if b"\n" in data:
+            break
+    return b"".join(chunks).decode("utf-8", errors="ignore")
+
+
+def _read_tcp_message(sock):
+    chunks = []
+    total = 0
+    while total < TCP_MAX_PAYLOAD:
+        try:
+            data = sock.recv(256)
+        except socket.timeout:
+            break
+        if not data:
+            break
+        chunks.append(data)
+        total += len(data)
+        if b"\n" in data:
+            break
+    return b"".join(chunks).decode("utf-8", errors="ignore")
+
+
+def _queue_command(cmd, device_id=None):
+    item = {
+        "cmd": cmd,
+        "device_id": None if device_id in (None, "") else _normalize_device_id(device_id),
+        "created_at": _now_text(),
+    }
+    with _data_lock:
+        _command_queue.append(item)
+        return len(_command_queue)
+
+
+def _handle_tcp_message(text, addr):
+    line = text.strip()
+    if not line:
+        return ""
+
+    if line.startswith("REPORT ") or line.startswith("REPORT:"):
+        payload = line.split(" ", 1)[1] if " " in line else line.split(":", 1)[1]
+        status = _update_status_from_device(payload)
+        return "OK\n" if status else "ERR\n"
+
+    if line.startswith("GET_CMD") or line.startswith("NEXT_CMD"):
+        parts = line.split()
+        device_id = parts[1] if len(parts) > 1 else None
+        cmd_item = _take_next_command(_normalize_device_id(device_id))
+        return f"{cmd_item['cmd'] if cmd_item else 'NONE'}\n"
+
+    if line.startswith("STATUS"):
+        parts = line.split()
+        device_id = parts[1] if len(parts) > 1 else None
+        with _data_lock:
+            status = deepcopy(_latest_status.get(_normalize_device_id(device_id), _default_status(_normalize_device_id(device_id))))
+        return f"{json.dumps(status, ensure_ascii=False)}\n"
+
+    if line.startswith("CMD "):
+        cmd = line[4:].strip().upper()
+        if cmd not in ALLOWED_COMMANDS:
+            return "ERR\n"
+        _queue_command(cmd)
+        return "QUEUED\n"
+
+    if line.startswith("{"):
+        status = _update_status_from_device(line)
+        return "OK\n" if status else "ERR\n"
+
+    if line.upper() in ALLOWED_COMMANDS:
+        _queue_command(line.upper())
+        return "QUEUED\n"
+
+    return "OK\n"
+
+
+def _tcp_client_worker(conn, addr):
+    with conn:
+        conn.settimeout(TCP_SOCKET_TIMEOUT)
+        payload = _read_tcp_message(conn)
+        print(f"[TCP_RX] from={addr[0]}:{addr[1]} payload={payload!r}")
+        response = _handle_tcp_message(payload, addr)
+        if response:
+            print(f"[TCP_TX] to={addr[0]}:{addr[1]} resp={response!r}")
+            conn.sendall(response.encode("utf-8"))
+
+
+def _tcp_server_loop():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind((TCP_LISTEN_HOST, TCP_LISTEN_PORT))
+        server.listen(5)
+        print(f"[TCP_SERVER] listen={TCP_LISTEN_HOST}:{TCP_LISTEN_PORT}")
+        while True:
+            conn, addr = server.accept()
+            Thread(target=_tcp_client_worker, args=(conn, addr), daemon=True).start()
+
+
+def _send_device_message(message):
+    if not DEVICE_QUERY_ENABLED:
+        return ""
+    try:
+        with socket.create_connection((DEVICE_TCP_HOST, DEVICE_TCP_PORT), timeout=DEVICE_CONNECT_TIMEOUT) as sock:
+            sock.settimeout(DEVICE_SOCKET_TIMEOUT)
+            sock.sendall(message.encode("utf-8"))
+            return _read_socket_text(sock)
+    except Exception as exc:
+        print(f"[DEVICE_QUERY] error={exc}")
+        return ""
+
+
+def _take_next_command(device_id):
+    with _data_lock:
+        for index, item in enumerate(_command_queue):
+            target = item.get("device_id")
+            if target is None or target == device_id:
+                del _command_queue[index]
+                return item
+    return None
+
+
+def _update_status_from_device(payload):
+    try:
+        data = json.loads(payload.strip())
+    except Exception:
+        print(f"[DEVICE_QUERY] bad payload: {payload!r}")
+        return None
+
+    device_id = _normalize_device_id(data.get("device_id"))
+    status = _default_status(device_id)
+    for key in ("temperature", "humidity", "light", "fan", "led", "mode"):
+        if key in data:
+            status[key] = data[key]
+    status["updated_at"] = _now_text()
+    return status
+
+
+def _device_poll_loop():
+    while True:
+        status_text = _send_device_message("STATUS\n")
+        if status_text:
+            status = _update_status_from_device(status_text)
+            if status:
+                with _data_lock:
+                    _latest_status[status["device_id"]] = status
+
+        cmd_item = _take_next_command(DEFAULT_DEVICE_ID)
+        if cmd_item is not None:
+            response = _send_device_message(f"{cmd_item['cmd']}\n")
+            if not response:
+                with _data_lock:
+                    _command_queue.appendleft(cmd_item)
+
+        time.sleep(DEVICE_POLL_INTERVAL)
 
 
 @app.before_request
@@ -234,4 +416,9 @@ if __name__ == "__main__":
         pass
 
     print("[LOCAL_IPV4]", ", ".join(sorted(addrs)) if addrs else "N/A")
+    if DEVICE_QUERY_ENABLED:
+        print(f"[DEVICE_QUERY] target={DEVICE_TCP_HOST}:{DEVICE_TCP_PORT} interval={DEVICE_POLL_INTERVAL}s")
+        Thread(target=_device_poll_loop, daemon=True).start()
+    if TCP_LISTEN_ENABLED:
+        Thread(target=_tcp_server_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=5000, debug=False)

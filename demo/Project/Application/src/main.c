@@ -229,7 +229,7 @@ int main(void)
     wifi_cmd_t wifi_cmd;
 
     nvic_priority_group_set(NVIC_PRIGROUP_PRE4_SUB0);
-    uart_init(USART0);
+    uart_init(DEBUG_USART);
 
     dis_led_init();
 
@@ -335,6 +335,21 @@ void uart_init(uint32_t usart_periph)
         usart_receive_config(USART0, USART_RECEIVE_ENABLE);
         usart_transmit_config(USART0, USART_TRANSMIT_ENABLE);
         usart_enable(USART0);
+    } else if (usart_periph == USART1) {
+        nvic_irq_enable(USART1_IRQn, 0, 0);
+        rcu_periph_clock_enable(RCU_GPIOA);
+        rcu_periph_clock_enable(RCU_USART1);
+        gpio_af_set(GPIOA, GPIO_AF_7, GPIO_PIN_2);
+        gpio_af_set(GPIOA, GPIO_AF_7, GPIO_PIN_3);
+        gpio_mode_set(GPIOA, GPIO_MODE_AF, GPIO_PUPD_PULLUP, GPIO_PIN_2);
+        gpio_output_options_set(GPIOA, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_2);
+        gpio_mode_set(GPIOA, GPIO_MODE_AF, GPIO_PUPD_PULLUP, GPIO_PIN_3);
+        gpio_output_options_set(GPIOA, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_3);
+        usart_deinit(USART1);
+        usart_baudrate_set(USART1, 115200U);
+        usart_receive_config(USART1, USART_RECEIVE_ENABLE);
+        usart_transmit_config(USART1, USART_TRANSMIT_ENABLE);
+        usart_enable(USART1);
     } else if (usart_periph == USART2) {
         nvic_irq_enable(USART2_IRQn, 0, 0);
         rcu_periph_clock_enable(RCU_GPIOD);
@@ -408,6 +423,10 @@ void debug_printf(uint32_t usart_periph, char *string)
 
     if (string == 0) {
         return;
+    }
+
+    if (usart_periph == USART0) {
+        usart_periph = DEBUG_USART;
     }
 
     len = (uint16_t)strlen(string);

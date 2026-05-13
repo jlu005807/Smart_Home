@@ -11,6 +11,7 @@
 #include "gd32f4xx.h"
 #include "stdint.h"
 
+#define DEBUG_USART USART1
 
 
 
